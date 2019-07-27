@@ -1,0 +1,31 @@
+"0","## 对每章节进行聚类分析####"
+"0","## 1:构建文档－词项tf-IDF矩阵"
+"0","corpus2 <- Corpus(VectorSource(Fen_red))"
+"0","Red_dtm_tfidf <- DocumentTermMatrix(corpus2,control = list(wordLengths=c(1,Inf),"
+"0","                                                    weighting = weightTfIdf))"
+"0","Red_dtm_tfidf"
+"1","<<DocumentTermMatrix (documents: 120, terms: 40342)>>
+"
+"1","Non-/sparse entries: 117314/4723726
+"
+"1","Sparsity           : 98%
+"
+"1","Maximal term length: 12
+"
+"1","Weighting          : term frequency - inverse document frequency (normalized) (tf-idf)
+"
+"0","## 一共有4万多个词"
+"0","## 降低tfidf矩阵的稀疏度"
+"0","Red_dtm_tfidfr <- removeSparseTerms(Red_dtm_tfidf,0.95)"
+"0","Red_dtm_tfidfr"
+"1","<<DocumentTermMatrix (documents: 120, terms: 3093)>>
+"
+"1","Non-/sparse entries: 59053/312107
+"
+"1","Sparsity           : 84%
+"
+"1","Maximal term length: 6
+"
+"1","Weighting          : term frequency - inverse document frequency (normalized) (tf-idf)
+"
+"0","## 只留下了3000多个关键的字"

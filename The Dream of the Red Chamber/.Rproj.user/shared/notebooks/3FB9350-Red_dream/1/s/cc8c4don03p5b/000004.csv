@@ -1,0 +1,6 @@
+"0","legend(""topleft"", inset=.05,      # location and inset"
+"0","       bty=""n"", cex=1,              # suppress legend box, shrink text 50%"
+"0","       title=""章节"","
+"0","       legend = c(""前80章"",""后40章""),"
+"0","       pch = c(21,22),"
+"0","       col = c(""red"",""blue""))"

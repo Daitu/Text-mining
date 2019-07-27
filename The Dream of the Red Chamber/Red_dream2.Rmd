@@ -1,0 +1,715 @@
+---
+title: "红楼梦文本分析2"
+author: "带土"
+date: "2016年11月6日"
+output: 
+    html_document: 
+    toc: true
+    toc_float: true
+    code_folding: hide
+    highlight: zenburn
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,message = FALSE,warning = FALSE,
+                      fig.width = 9.5,fig.height = 6)
+options(stringsAsFactors = FALSE,scipen = 99)
+rm(list=ls());gc()
+
+## 加载所需要的包####
+library(jiebaR)
+library(tm)
+library(readr)
+library(stringr)
+library(ggplot2)
+library(wordcloud2)
+library(wordcloud)
+library(GGally)
+library(gridExtra)
+library(scatterplot3d)
+library(plotly)
+library(fastcluster)
+library(lda)
+library(LDAvis)
+library(igraph)
+## R Markdown
+```
+# 介绍
+《红楼梦》文本分析以及关系网络的挖掘。
+
+该工作为大四上学期《数据挖掘》这门课程的一个作业，在这里做了一些练习，相互交流，也希望能取得好成绩。
+
+在这里主要进行和挖掘了如下内容：
+
+1. 《红楼梦》数据的准备、预处理、分词等
+
+2. 《红楼梦》各个章节的字数、词数、段落等相关方面的关系
+
+3. 《红楼梦》整体词频和词云的展示
+
+4. 《红楼梦》各个章节的聚类分析并可视化，主要进行了根据IF-IDF的系统聚类和根据词频的LDA主题模型聚类
+
+5. 《红楼梦》中关系网络的探索，主要探索了各个章节的关系图和人物关系网路图
+
+# 1. 《红楼梦》数据的准备、预处理、分词等
+
+```{r}
+## 读取停用词
+filename <- "./数据/我的红楼梦停用词.txt"
+mystopwords <- readLines(filename)
+## 读取红楼梦
+filename <-"./数据/红楼梦UTF82.txt"
+Red_dream <- readLines(filename,encoding='UTF-8')
+## 将读入的文档分章节####
+#去除空白行
+Red_dream <- Red_dream[!is.na(Red_dream)]
+# Red_dream <- as.vector(Red_dream)
+# Red_dream[is.na(Red_dream)]
+## 删除卷数据
+juan <- grep(Red_dream,pattern = "^第+.+卷")
+Red_dream <- Red_dream[(-juan)]
+## 找出每一章节的头部行数和尾部行数
+## 每一章节的名字
+Red_dreamname <- data.frame(name = Red_dream[grep(Red_dream,pattern = "^第+.+回")],
+                            chapter = 1:120)
+## 处理章节名
+names <- data.frame(str_split(Red_dreamname$name,pattern = " ",simplify =TRUE))
+Red_dreamname$chapter2 <- names$X1
+Red_dreamname$Name <- apply(names[,2:3],1,str_c,collapse = ",")
+## 每章的开始行数
+Red_dreamname$chapbegin<- grep(Red_dream,pattern = "^第+.+回")
+## 每章的结束行数
+Red_dreamname$chapend <- c((Red_dreamname$chapbegin-1)[-1],length(Red_dream))
+## 每章的段落长度
+Red_dreamname$chaplen <- Red_dreamname$chapend - Red_dreamname$chapbegin
+## 每章的内容
+for (ii in 1:nrow(Red_dreamname)) {
+  ## 将内容使用句号连接
+  chapstrs <- str_c(Red_dream[(Red_dreamname$chapbegin[ii]+1):Red_dreamname$chapend[ii]],collapse = "")
+  ## 剔除不必要的空格
+  Red_dreamname$content[ii] <- str_replace_all(chapstrs,pattern = "[[:blank:]]",replacement = "")
+}
+## 每章节的内容
+content <- Red_dreamname$content
+Red_dreamname$content <- NULL
+## 计算每章有多少个字
+Red_dreamname$numchars <- nchar(content)
+
+
+##-----------------------------------------------------------------------
+## 对红楼梦进行分词####
+Red_fen <- jiebaR::worker(type = "mix",user = "./数据/红楼梦词典.txt")
+Fen_red <- apply_list(as.list(content),Red_fen)
+## 去除停用词,使用并行的方法
+library(parallel)
+cl <- makeCluster(4)
+Fen_red <- parLapply(cl = cl,Fen_red, filter_segment,filter_words=mystopwords)
+stopCluster(cl)
+# Fen_red <- lapply(Fen_red, filter_segment,filter_words=mystopwords)
+## 每章节最终有多少个词
+Fen_red2 <- lapply(Fen_red, unique) #去重
+Red_dreamname$wordlen <- unlist(lapply(Fen_red2,length))
+## 添加分组变量，前80章为1组，后40章为2组
+Red_dreamname$Group <- factor(rep(c(1,2),times = c(80,40)),
+                              labels = c("前80章","后40章"))
+
+
+
+
+```
+## 查看第十章的分词的到的结果
+```{r,echo = TRUE}
+# 第10章的内容
+content[[10]]
+# 第10章的分词结果的抽样
+Fen_red[[10]][1:100]
+# 第10章分词后的词长
+length(Fen_red[[10]])
+
+```
+我们可以看出，该段分词后一共有1027个词语，并且给出了一些示例
+
+## 查看每个章节的一些信息
+```{r,echo = TRUE}
+head(Red_dreamname)
+
+```
+我们这里按照章节整理了一些相关的信息，主要有章节名、内容、段落数、字数、词数等信息
+
+# 2. 《红楼梦》各个章节的字数、词数、段落等相关方面的关系
+## 查看字数、词数、段落等信息的可视化
+```{r}
+## 对每章的内容进行探索分析####
+## 对相关章节进行分析
+## 每章节的段落长度
+p1 <- ggplot(Red_dreamname,aes(x = chapter,y = chaplen)) +
+  theme_bw(base_family = "STKaiti",base_size = 10) +
+  geom_point(colour = "red",size = 1) +
+  geom_line() +
+  geom_text(aes(x = 25,y = 0.9*max(Red_dreamname$chaplen)),
+            label="前80章",family = "STKaiti",colour = "Red") +
+  geom_text(aes(x = 100,y = 0.9*max(Red_dreamname$chaplen)),
+            label="后40章",family = "STKaiti",colour = "Red") +
+  geom_vline(xintercept = 80.5,colour = "blue") +
+  labs(x = "章节",y = "段数",title = "《红楼梦》每章段数")
+## 每章节的字数
+p2 <- ggplot(Red_dreamname,aes(x = chapter,y = numchars)) +
+  theme_bw(base_family = "STKaiti",base_size = 10) +
+  geom_point(colour = "red",size = 1) +
+  geom_line() +
+  geom_text(aes(x = 25,y = 0.9*max(Red_dreamname$numchars)),
+            label="前80章",family = "STKaiti",colour = "Red") +
+  geom_text(aes(x = 100,y = 0.9*max(Red_dreamname$numchars)),
+            label="后40章",family = "STKaiti",colour = "Red") +
+  geom_vline(xintercept = 80.5,colour = "blue") +
+  labs(x = "章节",y = "字数",title = "《红楼梦》每章字数")
+
+p3 <- ggplot(Red_dreamname,aes(x = chapter,y = wordlen)) +
+  theme_bw(base_family = "STKaiti",base_size = 10) +
+  geom_point(colour = "red",size = 1) +
+  geom_line() +
+  geom_text(aes(x = 25,y = 0.9*max(Red_dreamname$wordlen)),
+            label="前80章",family = "STKaiti",colour = "Red") +
+  geom_text(aes(x = 100,y = 0.9*max(Red_dreamname$wordlen)),
+            label="后40章",family = "STKaiti",colour = "Red") +
+  geom_vline(xintercept = 80.5,colour = "blue") +
+  labs(x = "章节",y = "词数",title = "《红楼梦》每章词数")
+## 绘制每一章节的平行坐标图
+p4 <- ggparcoord(Red_dreamname,columns = 7:9,scale = "center",
+                 groupColumn = "Group",showPoints = TRUE,
+                 title = "《红楼梦》") +
+  theme_bw(base_family = "STKaiti",base_size = 10) +
+  theme(legend.position =  "bottom",axis.title.x = element_blank()) +
+  scale_x_discrete(labels = c("断落数","字数","词数")) +
+  ylab("中心化数据大小")
+  
+gridExtra::grid.arrange(p1,p2,p3,p4,ncol = 2)
+
+```
+
+上面的四幅图分别为《红楼梦》中，每个章节的段落数、字数、词数、三者的平行坐标图
+
+从这些相互之间的关系，可以看出，前80章和后40章还是有一些差异的
+
+## 查看段落数、字数、词数三维散点图
+```{r}
+## 对三个变量绘制三散点图，
+par(family = "STKaiti",mfcol = c(1,1),cex = 1)
+color <- rep(c("red","blue"),times = c(80,40))
+pchs <- rep(c(21,22),times = c(80,40))
+scatterplot3d(x =Red_dreamname$chaplen,y = Red_dreamname$numchars,
+              z=Red_dreamname$wordlen,color = color,pch = pchs,
+              xlab="断落数", ylab="字数", zlab="词数",scale.y=1,
+              angle=30,main = "《红楼梦》")
+legend("topleft", inset=.05,      # location and inset
+       bty="n", cex=1,              # suppress legend box, shrink text 50%
+       title="章节",
+       legend = c("前80章","后40章"),
+       pch = c(21,22),
+       col = c("red","blue"))
+
+```
+
+## 查看段落数、字数、词数可交互散点图
+```{r}
+## 对三个变量绘制三散点图，
+## 可交互三维散点图
+plot_ly(Red_dreamname, x = ~chaplen, y = ~numchars, z = ~wordlen) %>% 
+  add_markers(color = ~Group,text = ~paste("Name: ", name)) %>%
+  layout(title = "《红楼梦》")
+```
+
+从三维散点图中可以清晰的看出，三者的空间关系，前80章更加分散，后40章更加的集中
+
+## 查看段落数、字数、词数矩阵散点图
+```{r}
+##矩阵散点图
+Red_dreamname_mat <- Red_dreamname[c("chaplen","numchars","wordlen","Group")]
+names(Red_dreamname_mat) <- c("断落数","字数","词数","章节")
+ggscatmat(Red_dreamname_mat,columns = c("断落数","字数","词数"),color = "章节") +
+  theme_bw(base_family = "STKaiti") +
+  ggtitle("《红楼梦》")
+```
+从散点矩阵图中可以看出三个变量的分布和相关关系，并且给出了前80章和后40章的相关性大小。
+
+
+# 3. 《红楼梦》整体词频和词云的展示
+
+## 构建文档－词项频数矩阵
+```{r}
+## 词频统计##-----------------------------------------------------------
+## 1:构建文档－词项频数矩阵
+corpus <- Corpus(VectorSource(Fen_red))
+Red_dtm <- DocumentTermMatrix(corpus,control = list(wordLengths=c(1,Inf)))
+Red_dtm
+## 一共有4万多个词
+```
+我们可以查看一共有120条文档，4万多个词项
+
+## 词频统计
+
+### 频数统计
+```{r}
+## 2:词频统计
+word_freq <- sort(colSums(as.matrix(Red_dtm)),decreasing = TRUE)
+word_freq <- data.frame(word = names(word_freq),freq=word_freq,row.names = NULL)
+word_freq$word <- as.factor(word_freq$word)
+```
+```{r,echo=TRUE}
+## 2:词频统计
+head(word_freq)
+```
+### 绘制词频图
+```{r,echo=TRUE}
+## 绘制词频图
+nn <- 250
+sum(word_freq$freq>=nn)
+```
+```{r}
+## 绘制词频图
+word_freq[word_freq$freq >= nn,] %>%
+  ggplot(aes(x = word,y = freq)) +
+  theme_bw(base_size = 12,base_family = "STKaiti") +
+  geom_bar(stat = "identity",fill= "red",colour = "lightblue",alpha = 0.6) +
+  scale_x_discrete() +
+  theme(axis.text.x = element_text(angle = 75,hjust = 1,size = 10)) +
+  labs(x = "词项",y = "频数",title = "《红楼梦》词频图")
+```
+
+我们绘制了出现频率大于250的一些词（一共有69个）的频频直方图，可以发现不同词之间出现频率的差异
+
+## 词云的绘制
+```{r,echo=TRUE}
+## 词云
+sum(word_freq$freq>=60)
+```
+一共有390个词的频数大于60
+### 静态词云
+```{r}
+### 静态词云
+layout(matrix(c(1, 2), nrow=2), heights=c(0.4, 4))
+par(mar=rep(0, 4),family = "STKaiti")
+plot.new()
+text(x=0.5, y=0.3, "红楼梦词云\nMin=60")
+wordcloud(words = word_freq$word, freq = word_freq$freq,
+          scale = c(4,0.8),min.freq = 60,random.order=FALSE,
+          family = "STKaiti",colors = brewer.pal(8,"Dark2"))
+
+```
+
+### 可交互词云
+
+```{r}
+## 动态词云
+data.frame(word_freq[word_freq$freq>60,]) %>%
+  wordcloud2(color = 'random-dark',backgroundColor = "whirt",
+             shape = 'star' )
+
+```
+
+### 字母词云
+```{r,fig.width=12,fig.height=12}
+data.frame(word_freq[word_freq$freq>60,]) %>%
+  letterCloud("R",wordSize = 11)
+```
+
+
+# 4. 《红楼梦》各个章节的聚类分析并可视化
+
+## 根据TF－IDF矩阵进行系统聚类
+
+### 构建文档－词项TF-IDF矩阵并去稀疏处理
+```{r}
+## 对每章节进行聚类分析####
+## 1:构建文档－词项tf-IDF矩阵
+corpus2 <- Corpus(VectorSource(Fen_red))
+Red_dtm_tfidf <- DocumentTermMatrix(corpus2,control = list(wordLengths=c(1,Inf),
+                                                    weighting = weightTfIdf))
+Red_dtm_tfidf
+## 一共有4万多个词
+## 降低tfidf矩阵的稀疏度
+Red_dtm_tfidfr <- removeSparseTerms(Red_dtm_tfidf,0.95)
+Red_dtm_tfidfr
+## 只留下了3000多个关键的字
+```
+最终处理后可以的到只剩3千多个重要的关键词
+
+### 聚类为6类时
+```{r,fig.width = 9.5,fig.height = 6}
+Red_dtm_tfidfr_mat <- as.matrix(Red_dtm_tfidfr)
+## 文本间的距离度量为夹角余弦距离
+Red_dtm_tfidfr_dist <- proxy::dist(Red_dtm_tfidfr_mat,method ="cosine")
+
+## 系统聚类，聚为两类
+k = 6
+Red_clust <- hclust(d = Red_dtm_tfidfr_dist,method = "average")
+Red_clust$labels <- Red_dreamname$chapter2
+## 可视化绘图
+par(family = "STKaiti",cex = 0.6)
+plot(Red_clust,
+     main = '红楼梦章节聚类\nmethod = average',
+     xlab = '', ylab = '', sub = '')
+groups <- cutree(Red_clust, k=k)   # "k=" defines the number of clusters you are using   
+rect.hclust(Red_clust, k=k, border="red") # draw dendogra
+## 每组有多少章
+table(groups)
+```
+
+### 聚类为5类时
+```{r,fig.width = 9.5,fig.height = 6}
+k = 5
+Red_clust <- hclust(d = Red_dtm_tfidfr_dist,method = "ward.D2")
+Red_clust$labels <- Red_dreamname$chapter2
+## 可视化绘图
+par(family = "STKaiti",cex = 0.6)
+plot(Red_clust,
+     main = '红楼梦章节聚类\nmethod = word.D2',
+     xlab = '', ylab = '', sub = '')
+groups <- cutree(Red_clust, k=k)   # "k=" defines the number of clusters you are using   
+rect.hclust(Red_clust, k=k, border="red") # draw dendogra
+## 每组有多少章
+table(groups)
+```
+
+
+# 5. 《红楼梦》中关系网络的探索
+
+## 章节的联系探索
+
+如果各章之间距离大于0.8，则视为章节之间没有联系，激励越小，联系越大
+```{r}
+# summary(Red_dtm_tfidfr_dist)
+threshoud <- 0.8
+Red_dist_cut <- as.matrix(Red_dtm_tfidfr_dist)
+for (ii in 1:dim(Red_dist_cut)[1]) {
+  for (kk in 1:dim(Red_dist_cut)[2]) {
+    ## 距离大于的则没有连接
+    aa <- Red_dist_cut[ii,kk]
+    ## 数值越小权重越大
+    aa <- ifelse(aa >=threshoud,0,aa)
+    aa <- abs(aa - threshoud)
+    aa <- ifelse(aa < threshoud,aa+threshoud,0)
+    Red_dist_cut[ii,kk] <- aa
+  }
+}
+# # plot(as.vector(Red_dist_cut))
+# # names(Red_dist_cut) <- Red_dreamname$chapter2
+row.names(Red_dist_cut) <- Red_dreamname$chapter
+## ---------------------------------------------------------
+
+# build a graph from the above matrix
+g <- graph.adjacency(Red_dist_cut, weighted=T, mode = "undirected")
+# remove loops
+g <- simplify(g)
+# set labels and degrees of vertices
+V(g)$label <- row.names(Red_dist_cut)
+V(g)$degree <- degree(g)
+
+## 绘制每章节的网络关系图
+set.seed(3952)
+par(family ="STKaiti",cex = 1)
+layout1 <- layout.kamada.kawai(g)
+plot(g, layout=layout1)
+## 美化图形
+V(g)$label.cex <- 1.2 * V(g)$degree / max(V(g)$degree) +0.4
+V(g)$label.color <- rgb(0, 0, .2, .8)
+V(g)$frame.color <- NA
+egam <- (log(E(g)$weight)+.4) / max(log(E(g)$weight)+.4)
+E(g)$color <- rgb(.5, .9, 0, egam)
+E(g)$width <- egam *4
+# plot the graph in layout1
+plot(g, layout=layout1,main = "《红楼梦》章节的关系")
+
+par(family ="STKaiti",cex = 1)
+layout2 <- layout.sphere(g)
+plot(g, layout=layout2,main = "《红楼梦》章节的关系")
+## 文字越大，说明与该章相关的章节数越多
+## 连接的线越粗，说明联系越大
+
+```
+该可视化图模型算法为能量布局算法
+
+
+
+
+```{r}
+par(family ="STKaiti",cex = 1)
+layout2 <- layout.sphere(g)
+plot(g, layout=layout2,main = "《红楼梦》章节的关系")
+## 文字越大，说明与该章相关的章节数越多
+## 连接的线越粗，说明联系越大
+
+
+```
+文字越大，说明与该章相关的章节数越多,连接的线越粗，说明联系越大
+
+## 人物社交网络
+
+只分析出现频次大于10的人员
+### 关键人物频数查看
+```{r}
+
+## 读取数据
+## 一共有149人出现的频次多余10次
+Red_net <- read.csv("./数据/社交网络权重.csv")
+Red_net[,1:2] <- apply(Red_net[,1:2],2,as.character)
+Name_freq <- read.csv("./数据/红楼梦人物出现频次.csv")
+Name_freq <- Name_freq[Name_freq$word %in%(union(unique(Red_net$First),
+                                                 unique(Red_net$Second))),]
+Name_freq$word <- as.character(Name_freq$word)
+# union(unique(Red_net$First),unique(Red_net$Second))
+
+## 可视化人出现的频次
+p1 <- ggplot(Name_freq,aes(x = reorder(word,freq),y = freq)) +
+  theme_bw(base_size = 9,base_family = "STKaiti")+
+  geom_bar(stat = "identity",position = "dodge",fill = "lightblue") +
+  theme(axis.text.x = element_text(size = 5,hjust = 1,angle = 90,vjust = 0.5),
+        axis.title.x = element_blank()) +
+  labs(x = "",y = "频数",title = "《红楼梦》中关键人物出现次数")
+
+p2 <- ggplot(Name_freq[Name_freq$freq>80,],aes(x = reorder(word,freq),y = freq)) +
+  theme_bw(base_size = 9,base_family = "STKaiti")+
+  geom_bar(stat = "identity",position = "dodge",fill = "lightblue") +
+  theme(axis.text.x = element_text(size = 9,hjust = 1,angle = 90,vjust = 0.5)) +
+  labs(x = "人名",y = "频数")
+
+grid.arrange(p1,p2,nrow = 2)
+
+
+```
+
+### 根据是否出现在同一章的社交网络
+
+如果两个入伍同时出现在同一章中一次，则两人之间的权重＋1
+
+只分析两人的权重大于10的关系（因为入关节点太多则网络不好查看）
+
+```{r}
+
+## -----------------------------------------------------------------
+## 按照权重1，即章节权重分析人物的社交网络####
+# 1:准备社交网络数据
+chap_net <- Red_net[Red_net$chapweight > 10,c(1,2,3)]
+names(chap_net) <- c("from","to","weight")
+
+chap_vert <- Name_freq[Name_freq$word %in% as.character(union(unique(chap_net$from),
+                   unique(chap_net$to))),]
+
+chap_net <- graph_from_data_frame(chap_net,directed = FALSE,
+                                  vertices = chap_vert)
+chap_net
+# # chap_net$name <- "《红楼梦》章节人物关系"
+# V(chap_net)$media
+# ## 节点数目
+# vcount(chap_net)
+# ## 边的数目
+# ecount(chap_net)
+## 简化网络图
+chap_net <- simplify(chap_net,remove.multiple = TRUE,remove.loops = TRUE,
+                     edge.attr.comb = "mean")
+
+## 查看节点的度
+degrees <- data.frame(name = names(degree(chap_net)),
+                      counts = (degree(chap_net)))
+
+ggplot(degrees,aes(x = reorder(name,counts),y = counts)) +
+  theme_bw(base_size = 11,base_family = "STKaiti")+
+  geom_bar(stat = "identity",position = "dodge",fill = "lightblue") +
+  theme(axis.text.x = element_text(size = 8,hjust = 1,angle = 90,vjust = 0.5),
+        axis.title.x = element_blank()) +
+  labs(x = "人名",y = "节点的度",title = "《红楼梦》")
+
+# ## 判断事否为联通图
+# is.connected(chap_net)
+# 
+# ## 计算图的直径
+# diameter(chap_net,directed = FALSE)
+
+## 
+set.seed(1234)
+par(cex = 0.8,family = "STKaiti")
+## 设置图层
+layout1 <- layout.lgl(chap_net)
+layout2 <- layout.kamada.kawai(chap_net)
+layout3 <- layout.reingold.tilford(chap_net)
+layout4 <- layout.fruchterman.reingold(chap_net)
+
+#V(chap_net)$size <- Name_freq$freq/10
+## 设置节点的字体
+V(chap_net)$label.family <- "STKaiti"
+E(chap_net)$width <- round(log10(E(chap_net)$weight))*4
+egam <- (E(chap_net)$width) / max(E(chap_net)$width)
+E(chap_net)$color <- rgb(1,0.5,0.5,egam)
+V(chap_net)$size <- log(V(chap_net)$freq) * 2.5
+par(cex = 0.8,family = "STKaiti")
+plot(chap_net,layout = layout1,main = "《红楼梦》根据章节部分人物关系")
+par(cex = 0.8,family = "STKaiti")
+plot(chap_net,layout = layout2,main = "《红楼梦》根据章节部分人物关系")
+par(cex = 0.8,family = "STKaiti")
+plot(chap_net,layout = layout3,main = "《红楼梦》根据章节部分人物关系")
+par(cex = 0.8,family = "STKaiti")
+plot(chap_net,layout = layout4,main = "《红楼梦》根据章节部分人物关系")
+
+```
+
+通过不同的网络图表现形式课一比较容易的观察人物之间的关系
+
+
+### 根据是否出现在同一段落的社交网络
+
+如果两个入伍同时出现在同一段落中一次，则两人之间的权重＋1
+
+只分析两人的权重大于10的关系（因为入关节点太多则网络不好查看）
+
+```{r}
+
+## -----------------------------------------------------------------
+## 按照权重2，即段落权重分析人物的社交网络####
+# 1:准备社交网络数据
+chap_net <- Red_net[Red_net$duanweight > 10,c(1,2,4)]
+names(chap_net) <- c("from","to","weight")
+
+chap_vert <- Name_freq[Name_freq$word %in% as.character(union(unique(chap_net$from),
+                                                              unique(chap_net$to))),]
+
+chap_net <- graph_from_data_frame(chap_net,directed = FALSE,
+                                  vertices = chap_vert)
+chap_net
+# chap_net$name <- "《红楼梦》章节人物关系"
+# V(chap_net)$media
+# ## 节点数目
+vcount(chap_net)
+## 边的数目
+ecount(chap_net)
+## 简化网络图
+chap_net <- simplify(chap_net,remove.multiple = TRUE,remove.loops = TRUE,
+                     edge.attr.comb = "mean")
+
+## 查看节点的度
+degrees <- data.frame(name = names(degree(chap_net)),
+                      counts = (degree(chap_net)))
+
+ggplot(degrees,aes(x = reorder(name,counts),y = counts)) +
+  theme_bw(base_size = 11,base_family = "STKaiti")+
+  geom_bar(stat = "identity",position = "dodge",fill = "lightblue") +
+  theme(axis.text.x = element_text(size = 8,hjust = 1,angle = 90,vjust = 0.5),
+        axis.title.x = element_blank()) +
+  labs(x = "人名",y = "节点的度",title = "《红楼梦》")
+
+## 判断事否为联通图
+is.connected(chap_net)
+
+## 计算图的直径
+diameter(chap_net,directed = FALSE)
+
+## 
+set.seed(1234)
+par(cex = 0.8,family = "STKaiti")
+## 设置图层
+layout1 <- layout.lgl(chap_net)
+layout2 <- layout.kamada.kawai(chap_net)
+layout3 <- layout.reingold.tilford(chap_net)
+layout4 <- layout.fruchterman.reingold(chap_net)
+
+#V(chap_net)$size <- Name_freq$freq/10
+## 设置节点的字体
+V(chap_net)$label.family <- "STKaiti"
+E(chap_net)$width <- log10(E(chap_net)$weight) *2
+egam <- (E(chap_net)$width) / max(E(chap_net)$width)
+E(chap_net)$color <- rgb(1,0.5,0.5,egam)
+V(chap_net)$size <- log(V(chap_net)$freq) * 2.5
+par(cex = 0.8,family = "STKaiti")
+plot(chap_net,layout = layout1,main = "《红楼梦》根据段落部分人物关系")
+par(cex = 0.8,family = "STKaiti")
+plot(chap_net,layout = layout2,main = "《红楼梦》根据段落部分人物关系")
+par(cex = 0.8,family = "STKaiti")
+plot(chap_net,layout = layout3,main = "《红楼梦》根据段落部分人物关系")
+par(cex = 0.8,family = "STKaiti")
+plot(chap_net,layout = layout4,main = "《红楼梦》根据段落部分人物关系")
+```
+
+### 分析关键人物的社交网络
+
+如果两个入伍同时出现在同一段落中一次，则两人之间的权重＋1
+
+只分析两人的权重大于50的关系
+
+```{r}
+## -----------------------------------------------------------------
+## 按照权重2，即段落权重分析人物的社交网络####
+## 分析链接次数较大的人物
+# 1:准备社交网络数据
+chap_net <- Red_net[Red_net$duanweight > 50,c(1,2,4)]
+names(chap_net) <- c("from","to","weight")
+
+chap_vert <- Name_freq[Name_freq$word %in% as.character(union(unique(chap_net$from),
+                                                              unique(chap_net$to))),]
+
+chap_net <- graph_from_data_frame(chap_net,directed = FALSE,
+                                  vertices = chap_vert)
+chap_net
+# chap_net$name <- "《红楼梦》章节人物关系"
+# V(chap_net)$media
+## 节点数目
+vcount(chap_net)
+## 边的数目
+ecount(chap_net)
+## 简化网络图
+chap_net <- simplify(chap_net,remove.multiple = TRUE,remove.loops = TRUE,
+                     edge.attr.comb = "mean")
+
+## 查看节点的度
+degrees <- data.frame(name = names(degree(chap_net)),
+                      counts = (degree(chap_net)))
+
+ggplot(degrees,aes(x = reorder(name,counts),y = counts)) +
+  theme_bw(base_size = 11,base_family = "STKaiti")+
+  geom_bar(stat = "identity",position = "dodge",fill = "lightblue") +
+  theme(axis.text.x = element_text(size = 10,hjust = 1,angle = 90,vjust = 0.5),
+        axis.title.x = element_blank()) +
+  labs(x = "人名",y = "节点的度",title = "《红楼梦》")
+
+## 判断事否为联通图
+is.connected(chap_net)
+
+## 计算图的直径
+diameter(chap_net,directed = FALSE)
+
+## 
+set.seed(1234)
+par(cex = 0.8,family = "STKaiti")
+## 设置图层
+layout1 <- layout.lgl(chap_net)
+layout2 <- layout.kamada.kawai(chap_net)
+layout3 <- layout.reingold.tilford(chap_net)
+layout4 <- layout.fruchterman.reingold(chap_net)
+
+#V(chap_net)$size <- Name_freq$freq/10
+## 设置节点的字体
+V(chap_net)$label.family <- "STKaiti"
+E(chap_net)$width <- log10(E(chap_net)$weight) *2
+egam <- (E(chap_net)$width) / max(E(chap_net)$width)
+E(chap_net)$color <- rgb(1,0.5,0.5,egam)
+V(chap_net)$size <- log(V(chap_net)$freq) * 2.5
+plot(chap_net,layout = layout1,main = "《红楼梦》根据段落部分人物关系")
+par(cex = 0.8,family = "STKaiti")
+plot(chap_net,layout = layout2,main = "《红楼梦》根据段落部分人物关系")
+par(cex = 0.8,family = "STKaiti")
+plot(chap_net,layout = layout3,main = "《红楼梦》根据段落部分人物关系")
+par(cex = 0.8,family = "STKaiti")
+plot(chap_net,layout = layout4,main = "《红楼梦》根据段落部分人物关系")
+
+
+```
+
+
+
+
+
+
+
+
+
+
+

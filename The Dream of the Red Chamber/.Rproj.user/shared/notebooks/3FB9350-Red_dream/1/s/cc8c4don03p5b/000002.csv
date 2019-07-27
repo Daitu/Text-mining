@@ -1,0 +1,8 @@
+"0","## 对三个变量绘制三散点图，"
+"0","par(family = ""STKaiti"",mfcol = c(1,1),cex = 1)"
+"0","color <- rep(c(""red"",""blue""),times = c(80,40))"
+"0","pchs <- rep(c(21,22),times = c(80,40))"
+"0","scatterplot3d(x =Red_dreamname$chaplen,y = Red_dreamname$numchars,"
+"0","              z=Red_dreamname$wordlen,color = color,pch = pchs,"
+"0","              xlab=""断落数"", ylab=""字数"", zlab=""词数"",scale.y=1,"
+"0","              angle=30,main = ""《红楼梦》"")"

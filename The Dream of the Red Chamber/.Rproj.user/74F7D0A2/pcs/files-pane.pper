@@ -1,0 +1,9 @@
+{
+    "path" : "~/数据分析/红楼梦文本挖掘/The Dream of the Red Chamber",
+    "sortOrder" : [
+        {
+            "ascending" : true,
+            "columnIndex" : 2
+        }
+    ]
+}

@@ -1,0 +1,11 @@
+"0","```r
+### 静态词云
+sum(ci_freq$freq>=100)
+```"
+"1","[1] 248
+"
+"0","```r
+wordcloud(words = ci_freq$word, freq = ci_freq$freq,
+          scale = c(4,0.8),min.freq = 100,random.order=FALSE,
+          family = \"STKaiti\",colors = brewer.pal(10,\"BrBG\"))
+```"

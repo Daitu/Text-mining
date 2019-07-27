@@ -1,0 +1,7 @@
+"0","```r
+## 2:词频统计
+ci_freq <- sort(colSums(as.matrix(Reddtm)),decreasing = TRUE)
+ci_freq <- data.frame(word = names(ci_freq),freq=ci_freq)
+ci_freq$word <- as.factor(ci_freq$word)
+head(ci_freq)
+```"

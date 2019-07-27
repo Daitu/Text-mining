@@ -1,0 +1,15 @@
+"0","```r
+Reddtmtfidfrmat <- as.matrix(Reddtmtfidfr)
+## 文本间的距离度量为相关系数
+Reddtmtfidfrdist <- proxy::dist(Reddtmtfidfrmat,method =\"correlation\")
+## 系统聚类
+Redclust <- hclust(d = Reddtmtfidfrdist,method = \"mcquitty\")
+Redclust$labels <- Red_dream$chapter
+## 可视化绘图
+par(family = \"STKaiti\",cex = 0.6)
+plot(Redclust,
+     main = '红楼梦各章聚类',
+     xlab = '', ylab = '', sub = '')
+group <- cutree(Redclust, k=4)     
+rect.hclust(Redclust, k=4, border=\"blue\") 
+```"

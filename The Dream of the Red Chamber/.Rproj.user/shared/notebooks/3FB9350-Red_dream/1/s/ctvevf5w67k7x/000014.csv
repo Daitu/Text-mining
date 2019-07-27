@@ -1,0 +1,2 @@
+"0","groups <- cutree(Red_clust, k=k)   # ""k="" defines the number of clusters you are using   "
+"0","rect.hclust(Red_clust, k=k, border=""red"") # draw dendogra"

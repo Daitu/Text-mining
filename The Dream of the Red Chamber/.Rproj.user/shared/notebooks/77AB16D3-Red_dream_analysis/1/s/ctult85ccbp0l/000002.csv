@@ -1,0 +1,25 @@
+"0","```r
+## 对每章节进行聚类分析####
+## 构建文档－词项tf-IDF矩阵
+corpus2 <- Corpus(VectorSource(Fen))
+Reddtmtfidf <- DocumentTermMatrix(corpus2,control = list(wordLengths=c(1,Inf),
+                                                    weighting = weightTfIdf))
+Reddtmtfidf
+```"
+"1","<<DocumentTermMatrix (documents: 120, terms: 27930)>>
+Non-/sparse entries: 114755/3236845
+Sparsity           : 97%
+Maximal term length: 12
+Weighting          : term frequency - inverse document frequency (normalized) (tf-idf)
+"
+"0","```r
+## 降低tfidf矩阵的稀疏度
+Reddtmtfidfr <- removeSparseTerms(Reddtmtfidf,0.95)
+Reddtmtfidfr
+```"
+"1","<<DocumentTermMatrix (documents: 120, terms: 3579)>>
+Non-/sparse entries: 69940/359540
+Sparsity           : 84%
+Maximal term length: 6
+Weighting          : term frequency - inverse document frequency (normalized) (tf-idf)
+"

@@ -1,0 +1,12 @@
+"0","```r
+## 构建文档－词项频数矩阵
+corpus <- Corpus(VectorSource(Fen))
+Reddtm <- DocumentTermMatrix(corpus,control = list(wordLengths=c(1,Inf)))
+Reddtm
+```"
+"1","<<DocumentTermMatrix (documents: 120, terms: 27930)>>
+Non-/sparse entries: 114995/3236605
+Sparsity           : 97%
+Maximal term length: 12
+Weighting          : term frequency (tf)
+"

@@ -1,0 +1,8 @@
+"0","k = 5"
+"0","Red_clust <- hclust(d = Red_dtm_tfidfr_dist,method = ""ward.D2"")"
+"0","Red_clust$labels <- Red_dreamname$chapter2"
+"0","## 可视化绘图"
+"0","par(family = ""STKaiti"",cex = 0.6)"
+"0","plot(Red_clust,"
+"0","     main = '红楼梦章节聚类\nmethod = word.D2',"
+"0","     xlab = '', ylab = '', sub = '')"

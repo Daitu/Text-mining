@@ -1,0 +1,11 @@
+"0","```r
+Redclust <- hclust(d = Reddtmtfidfrdist,method = \"ward.D\")
+Redclust$labels <- Red_dream$chapter
+## 可视化绘图
+par(family = \"STKaiti\",cex = 0.6)
+plot(Redclust,
+     main = \"红楼梦各章聚类\",
+     xlab = '', ylab = '', sub = '')
+group <- cutree(Redclust, k=4)  
+rect.hclust(Redclust, k=4, border=\"blue\") 
+```"

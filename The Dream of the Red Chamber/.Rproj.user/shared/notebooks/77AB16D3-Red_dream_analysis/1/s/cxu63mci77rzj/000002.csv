@@ -1,0 +1,10 @@
+"0","```r
+## 绘制词频图
+nn <- 500
+ggplot(aes(x = reorder(word,freq),y = freq),data = ci_freq[ci_freq$freq >= nn,]) +
+  theme_bw(base_size = 12,base_family = \"STKaiti\") +
+  geom_bar(stat = \"identity\",fill= \"lightblue\",colour = \"lightblue\",alpha = 0.9) +
+  scale_x_discrete() +
+  theme(axis.text.x = element_text(angle = 90,hjust = 1)) +
+  labs(x = \"词项\",y = \"数量\",title = \"《红楼梦》\")
+```"

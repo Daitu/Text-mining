@@ -1,0 +1,44 @@
+"0","```r
+## 读取停用词
+mystopwords <- readLines(\"红楼梦停用词.txt\")
+## 读取红楼梦
+Red <- readLines(\"红楼梦.txt\",encoding='UTF-8')
+## 将读入的文档分章节####
+#去除空白行
+Red <- Red[!is.na(Red)]
+## 删除卷数据
+juan <- grep(Red,pattern = \"^第+.+卷\")
+Red <- Red[(-juan)]
+## 找出每一章节的头部行数和尾部行数
+## 每一章节的名字
+Red_dream <- data.frame(names = Red[grep(Red,pattern = \"^第+.+回\")],
+                            chapter = 1:120)
+## 处理章节名
+names <- data.frame(str_split(Red_dream$name,pattern = \" \",simplify =TRUE))
+Red_dream$chapter2 <- names$X1
+Red_dream$Name <- apply(names[,2:3],1,str_c,collapse = \",\")
+## 每章的开始行数
+Red_dream$chapbegin<- grep(Red,pattern = \"^第+.+回\")
+## 每章的结束行数
+Red_dream$chapend <- c((Red_dream$chapbegin-1)[-1],length(Red))
+## 每章的段落长度
+Red_dream$chaplen <- Red_dream$chapend - Red_dream$chapbegin
+## 每章的内容
+for (ii in 1:nrow(Red_dream)) {
+  ## 将内容使用句号连接
+  chapstrs <- str_c(Red[(Red_dream$chapbegin[ii]+1):Red_dream$chapend[ii]],collapse = \"\")
+  ## 剔除不必要的空格
+  Red_dream$content[ii] <- str_replace_all(chapstrs,pattern = \"[[:blank:]]\",replacement = \"\")
+}
+## 每章节的内容
+contents <- Red_dream$content
+Red_dream$content <- NULL
+##-----------------------------------------------------------------------
+##-----------------------------------------------------------------------
+##-----------------------------------------------------------------------
+## 对红楼梦进行分词
+Redfen <- jiebaR::worker(type = \"full\",user = \"红楼梦词典.txt\")
+Fen_red <- apply_list(as.list(content),Redfen)
+## 去除停用词
+Fen_red <- lapply(Fen_red, filter_segment,filter_words=mystopwords)
+```"

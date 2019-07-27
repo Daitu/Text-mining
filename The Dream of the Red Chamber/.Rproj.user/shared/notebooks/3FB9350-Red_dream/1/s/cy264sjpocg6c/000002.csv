@@ -1,0 +1,16 @@
+"0","## 词频统计##-----------------------------------------------------------"
+"0","## 1:构建文档－词项频数矩阵"
+"0","corpus <- Corpus(VectorSource(Fen_red))"
+"0","Red_dtm <- DocumentTermMatrix(corpus,control = list(wordLengths=c(1,Inf)))"
+"0","Red_dtm"
+"1","<<DocumentTermMatrix (documents: 120, terms: 40342)>>
+"
+"1","Non-/sparse entries: 117554/4723486
+"
+"1","Sparsity           : 98%
+"
+"1","Maximal term length: 12
+"
+"1","Weighting          : term frequency (tf)
+"
+"0","## 一共有4万多个词"

@@ -1,0 +1,6 @@
+"0","```r
+## 动态词云
+data.frame(ci_freq[ci_freq$freq>100,]) %>%
+  wordcloud2(color = 'random-dark',backgroundColor = \"white\",
+             shape =  'circle'  )
+```"
